@@ -377,6 +377,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="pulse reading of the last frame (if different)",
     )
     p_guess.add_argument("frames", nargs="+")
+    p_guess.set_defaults(func=cmd_guess)
     p_write = sub.add_parser(
         "write", help="write hex bytes to a characteristic, then listen"
     )
