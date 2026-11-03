@@ -46,18 +46,21 @@ async def scan(
 async def watch(
     interval: float = 5.0,
     name_filter: Optional[str] = None,
+    lost_rounds: int = 3,
 ):
     """Continuously scan and yield ("new"|"lost", device_dict) events.
 
-    Emits a "new" event the first time an address is seen and a "lost"
-    event once it stops advertising for `interval` seconds. Power-cycling a
-    device shows up as new -> lost -> new on the same address, which
-    identifies it even when it advertises without a name.
+    Emits a "new" event the first time an address is seen, and a "lost"
+    event only after `lost_rounds` consecutive rounds without detection,
+    so intermittent advertisers do not flap. Power-cycling a device shows
+    up as new -> lost -> new on the same address, which identifies it even
+    when it advertises without a name.
     """
     _, BleakScanner = _require_bleak()
 
     detections: asyncio.Queue = asyncio.Queue()
-    active: set = set()
+    known: Dict[str, dict] = {}
+    misses: Dict[str, int] = {}
 
     def on_detection(device, adv):
         name = getattr(adv, "local_name", None) or device.name or ""
@@ -69,42 +72,35 @@ async def watch(
             "rssi": getattr(adv, "rssi", None),
             "uuids": [str(u) for u in (adv.service_uuids or [])],
         }
-        active.add(device.address)
-        detections.put_nowait(("new", info))
+        misses[device.address] = 0
+        if device.address not in known:
+            known[device.address] = info
+            detections.put_nowait(("new", info))
+        else:
+            known[device.address] = info
 
     scanner = BleakScanner(detection_callback=on_detection)
     await scanner.start()
     try:
-        last_seen: set = set()
         while True:
-            event = None
-            deadline = asyncio.get_event_loop().time() + interval
-            while event is None:
-                remaining = deadline - asyncio.get_event_loop().time()
-                if remaining <= 0:
-                    break
-                try:
-                    event = await asyncio.wait_for(detections.get(), remaining)
-                except asyncio.TimeoutError:
-                    break
-                kind, info = event
-                if info["address"] not in last_seen:
-                    yield kind, info
-                last_seen.add(info["address"])
-            for address in last_seen - active:
-                yield (
-                    "lost",
-                    {
-                        "address": address,
-                        "name": "",
-                        "rssi": None,
-                        "uuids": [],
-                    },
-                )
-            last_seen -= {
-                a for a in last_seen if a not in active
-            }
-            active.clear()
+            await asyncio.sleep(interval)
+            for address, count in list(misses.items()):
+                if count == 0:
+                    continue
+                if count >= lost_rounds:
+                    del misses[address]
+                    known.pop(address, None)
+                    yield (
+                        "lost",
+                        {
+                            "address": address,
+                            "name": "",
+                            "rssi": None,
+                            "uuids": [],
+                        },
+                    )
+            for address in misses:
+                misses[address] += 1
     finally:
         await scanner.stop()
 

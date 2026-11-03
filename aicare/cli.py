@@ -41,7 +41,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
     if args.watch:
         async def run_watch() -> None:
-            async for kind, d in watch(args.interval, args.name_filter):
+            async for kind, d in watch(
+                args.interval, args.name_filter, args.lost_rounds
+            ):
                 if kind == "lost":
                     print(f"PERDU   {d['address']}", flush=True)
                     continue
@@ -263,6 +265,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=5.0,
         help="round duration in seconds for --watch",
+    )
+    p_scan.add_argument(
+        "--lost-rounds",
+        type=int,
+        default=3,
+        help="rounds without detection before a device is reported lost",
     )
     p_scan.set_defaults(func=cmd_scan)
 
