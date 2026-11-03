@@ -291,6 +291,22 @@ def cmd_read(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_info(args: argparse.Namespace) -> int:
+    from .ble import device_info
+
+    info = asyncio.run(device_info(args.address, wait=args.wait))
+    if not info:
+        print(
+            "no readable Device Information characteristic; "
+            "device is nameless/proprietary or requires pairing",
+            file=sys.stderr,
+        )
+        return 1
+    for key, value in info.items():
+        print(f"{key}: {value}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aicare",
@@ -397,6 +413,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_read.add_argument("--address", required=True)
     p_read.add_argument("--char", required=True)
     p_read.set_defaults(func=cmd_read)
+
+    p_info = sub.add_parser(
+        "info", help="read Device Information service (manufacturer, model)"
+    )
+    p_info.add_argument("--address", required=True)
+    p_info.add_argument(
+        "--wait",
+        type=float,
+        default=0.0,
+        help="seconds to wait for the device to advertise (0 = no wait)",
+    )
+    p_info.set_defaults(func=cmd_info)
 
     return parser
 

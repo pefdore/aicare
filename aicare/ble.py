@@ -268,6 +268,35 @@ async def write(
             await asyncio.sleep(listen_after)
 
 
+DEVICE_INFO_CHARS = {
+    "00002a29-0000-1000-8000-00805f9b34fb": "manufacturer",
+    "00002a24-0000-1000-8000-00805f9b34fb": "model",
+    "00002a25-0000-1000-8000-00805f9b34fb": "serial",
+    "00002a27-0000-1000-8000-00805f9b34fb": "hardware_rev",
+    "00002a28-0000-1000-8000-00805f9b34fb": "software_rev",
+    "00002a26-0000-1000-8000-00805f9b34fb": "firmware_rev",
+}
+
+
+async def device_info(address: str, wait: float = 0.0) -> Dict[str, str]:
+    """Connect and read the Device Information service (0x180A)."""
+    BleakClient, _ = _require_bleak()
+    target = await find_device(address, wait)
+    async with BleakClient(target) as client:
+        out: Dict[str, str] = {}
+        for service in client.services:
+            for ch in service.characteristics:
+                if str(ch.uuid) in DEVICE_INFO_CHARS and "read" in ch.properties:
+                    try:
+                        value = bytes(await client.read_gatt_char(ch.uuid))
+                        out[DEVICE_INFO_CHARS[str(ch.uuid)]] = value.decode(
+                            "utf-8", errors="replace"
+                        )
+                    except Exception:
+                        continue
+        return out
+
+
 async def read(address: str, char_uuid: str) -> bytes:
     """Read a characteristic and return its raw value."""
     BleakClient, _ = _require_bleak()
