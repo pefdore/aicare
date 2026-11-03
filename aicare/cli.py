@@ -113,17 +113,20 @@ class ListenPrinter:
         offsets: Optional[FixedOffsets],
         stable: int,
         as_json: bool,
+        char_label: str = "",
     ) -> None:
         self.offsets = offsets
         self.stable = stable
         self.as_json = as_json
+        self.char_label = char_label
         self._last: Optional[dict] = None
         self._streak = 0
 
     def __call__(self, _sender, data: bytes) -> None:
         frame = " ".join(f"{b:02x}" for b in data)
+        prefix = f"[{self.char_label}] " if self.char_label else ""
         if not self.as_json:
-            print(f"frame: {frame}", flush=True)
+            print(f"{prefix}frame: {frame}", flush=True)
         reading: Optional[dict] = None
         if self.offsets is not None:
             if len(data) > max(self.offsets.spo2, self.offsets.pulse):
@@ -134,7 +137,10 @@ class ListenPrinter:
                 reading = plx
             elif not self.as_json:
                 for hit in heuristic_decode(data):
-                    print(f"  {hit['type']} @ offset {hit['offset']}: {hit['value']}", flush=True)
+                    print(
+                        f"  {hit['type']} @ offset {hit['offset']}: {hit['value']}",
+                        flush=True,
+                    )
         if reading is None:
             return
         if self.stable > 1:
@@ -166,7 +172,12 @@ def cmd_listen(args: argparse.Namespace) -> int:
             pulse=args.pulse_offset,
             pi=args.pi_offset,
         )
-    printer = ListenPrinter(offsets=offsets, stable=args.stable, as_json=args.json)
+    def make_printer(char: str) -> ListenPrinter:
+        label = char.split("-")[0] if args.all else ""
+        return ListenPrinter(
+            offsets=offsets, stable=args.stable, as_json=args.json, char_label=label
+        )
+
     print(
         f"listening on {args.address} (Ctrl+C to stop)",
         file=sys.stderr,
@@ -177,8 +188,10 @@ def cmd_listen(args: argparse.Namespace) -> int:
                 args.address,
                 service_uuid=args.service,
                 char_uuid=args.char,
-                handler=printer,
+                handler=make_printer(""),
                 wait=args.wait,
+                handler_factory=make_printer if args.all else None,
+                subscribe_all=args.all,
             )
         )
     except KeyboardInterrupt:
@@ -297,6 +310,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="publish only after N identical consecutive frames",
+    )
+    p_listen.add_argument(
+        "--all",
+        action="store_true",
+        help="subscribe to every notify characteristic, tag frames with source",
     )
     p_listen.add_argument("--json", action="store_true")
     p_listen.add_argument(

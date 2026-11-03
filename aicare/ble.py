@@ -172,12 +172,16 @@ async def listen(
     handler: Optional[Callable[[int, bytes], None]] = None,
     plx_notify_uuid: str = PLX_CONTINUOUS_MEASUREMENT,
     wait: float = 0.0,
+    handler_factory: Optional[Callable[[str], Callable]] = None,
+    subscribe_all: bool = False,
 ) -> None:
     """Subscribe to notifications (forever) and forward frames to handler.
 
     If service/char are not given, the PLX continuous measurement
     characteristic is used when present, otherwise the first notify
-    characteristic found.
+    characteristic found. With subscribe_all=True, every subscribable
+    characteristic gets a notification handler built by handler_factory
+    (called with the char UUID); failed subscriptions are skipped.
     """
     BleakClient, _ = _require_bleak()
     target = await find_device(address, wait)
@@ -198,10 +202,15 @@ async def listen(
             candidates.sort(key=rank)
         if not candidates:
             raise SystemExit("no notify characteristic found on this device")
+        subscribed = 0
         last_error: Optional[Exception] = None
         for service, char in candidates:
+            if handler_factory is not None:
+                char_handler = handler_factory(char)
+            else:
+                char_handler = handler or _default_handler
             try:
-                await client.start_notify(char, handler or _default_handler)
+                await client.start_notify(char, char_handler)
             except Exception as exc:  # access denied, not supported, pairing required
                 last_error = exc
                 print(
@@ -215,12 +224,16 @@ async def listen(
                 file=__import__("sys").stderr,
                 flush=True,
             )
-            await asyncio.Event().wait()
-            return
-        raise SystemExit(
-            "could not subscribe to any notify characteristic: "
-            f"{last_error}; try pairing the device in Windows Bluetooth settings"
-        )
+            subscribed += 1
+            if not subscribe_all:
+                await asyncio.Event().wait()
+                return
+        if subscribed == 0:
+            raise SystemExit(
+                "could not subscribe to any notify characteristic: "
+                f"{last_error}; try pairing the device in Windows Bluetooth settings"
+            )
+        await asyncio.Event().wait()
 
 
 def _default_handler(_sender, data: bytes) -> None:  # pragma: no cover
