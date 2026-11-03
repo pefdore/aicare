@@ -182,18 +182,45 @@ async def listen(
     BleakClient, _ = _require_bleak()
     target = await find_device(address, wait)
     async with BleakClient(target) as client:
-        if not char_uuid:
+        if char_uuid:
+            candidates = [(service_uuid or char_uuid, char_uuid)]
+        else:
             candidates = []
             for s in client.services:
                 for ch in s.characteristics:
                     if "notify" in ch.properties or "indicate" in ch.properties:
                         candidates.append((str(s.uuid), str(ch.uuid)))
-            if not candidates:
-                raise SystemExit("no notify characteristic found on this device")
-            plx = [c for c in candidates if c[1].endswith("2a5f")]
-            service_uuid, char_uuid = (plx or candidates)[0]
-        await client.start_notify(char_uuid, handler or _default_handler)
-        await asyncio.Event().wait()
+            # vendor Aicare chars first (1531/1542/1543), then PLX, rest last
+            def rank(c):
+                return (
+                    0 if c[1].startswith("000015") else 1 if c[1].endswith("2a5f") else 2
+                )
+            candidates.sort(key=rank)
+        if not candidates:
+            raise SystemExit("no notify characteristic found on this device")
+        last_error: Optional[Exception] = None
+        for service, char in candidates:
+            try:
+                await client.start_notify(char, handler or _default_handler)
+            except Exception as exc:  # access denied, not supported, pairing required
+                last_error = exc
+                print(
+                    f"cannot subscribe to {char} ({exc}); trying next...",
+                    file=__import__("sys").stderr,
+                    flush=True,
+                )
+                continue
+            print(
+                f"subscribed to {char} (service {service})",
+                file=__import__("sys").stderr,
+                flush=True,
+            )
+            await asyncio.Event().wait()
+            return
+        raise SystemExit(
+            "could not subscribe to any notify characteristic: "
+            f"{last_error}; try pairing the device in Windows Bluetooth settings"
+        )
 
 
 def _default_handler(_sender, data: bytes) -> None:  # pragma: no cover
