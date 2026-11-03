@@ -37,7 +37,32 @@ def parse_frame(text: str) -> bytes:
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
-    from .ble import scan
+    from .ble import scan, watch
+
+    if args.watch:
+        async def run_watch() -> None:
+            async for kind, d in watch(args.interval, args.name_filter):
+                if kind == "lost":
+                    print(f"PERDU   {d['address']}", flush=True)
+                    continue
+                line = f"NOUVEAU {d['address']}  "
+                if d["rssi"] is not None:
+                    line += f"rssi={d['rssi']}  "
+                line += d["name"] or "(sans nom)"
+                if d["uuids"]:
+                    line += "  services: " + ", ".join(d["uuids"])
+                print(line, flush=True)
+
+        print(
+            f"scan continu (Ctrl+C pour arreter): "
+            "allume/eteins l'oxymetre pour identifier son MAC",
+            file=sys.stderr,
+        )
+        try:
+            asyncio.run(run_watch())
+        except KeyboardInterrupt:
+            pass
+        return 0
 
     devices = asyncio.run(scan(args.duration, args.name_filter))
     for d in devices:
@@ -228,6 +253,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan = sub.add_parser("scan", help="scan for BLE devices")
     p_scan.add_argument("--duration", type=float, default=10.0)
     p_scan.add_argument("--name-filter", default=None)
+    p_scan.add_argument(
+        "--watch",
+        action="store_true",
+        help="scan continuously and report devices appearing/disappearing",
+    )
+    p_scan.add_argument(
+        "--interval",
+        type=float,
+        default=5.0,
+        help="round duration in seconds for --watch",
+    )
     p_scan.set_defaults(func=cmd_scan)
 
     p_gatt = sub.add_parser("gatt", help="dump services/characteristics")

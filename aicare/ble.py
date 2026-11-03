@@ -43,6 +43,72 @@ async def scan(
     return out
 
 
+async def watch(
+    interval: float = 5.0,
+    name_filter: Optional[str] = None,
+):
+    """Continuously scan and yield ("new"|"lost", device_dict) events.
+
+    Emits a "new" event the first time an address is seen and a "lost"
+    event once it stops advertising for `interval` seconds. Power-cycling a
+    device shows up as new -> lost -> new on the same address, which
+    identifies it even when it advertises without a name.
+    """
+    _, BleakScanner = _require_bleak()
+
+    detections: asyncio.Queue = asyncio.Queue()
+    active: set = set()
+
+    def on_detection(device, adv):
+        name = getattr(adv, "local_name", None) or device.name or ""
+        if name_filter and name_filter.lower() not in name.lower():
+            return
+        info = {
+            "address": device.address,
+            "name": name,
+            "rssi": getattr(adv, "rssi", None),
+            "uuids": [str(u) for u in (adv.service_uuids or [])],
+        }
+        active.add(device.address)
+        detections.put_nowait(("new", info))
+
+    scanner = BleakScanner(detection_callback=on_detection)
+    await scanner.start()
+    try:
+        last_seen: set = set()
+        while True:
+            event = None
+            deadline = asyncio.get_event_loop().time() + interval
+            while event is None:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    break
+                try:
+                    event = await asyncio.wait_for(detections.get(), remaining)
+                except asyncio.TimeoutError:
+                    break
+                kind, info = event
+                if info["address"] not in last_seen:
+                    yield kind, info
+                last_seen.add(info["address"])
+            for address in last_seen - active:
+                yield (
+                    "lost",
+                    {
+                        "address": address,
+                        "name": "",
+                        "rssi": None,
+                        "uuids": [],
+                    },
+                )
+            last_seen -= {
+                a for a in last_seen if a not in active
+            }
+            active.clear()
+    finally:
+        await scanner.stop()
+
+
 async def dump_gatt(address: str) -> Dict[str, List[dict]]:
     """Connect and dump services/characteristics as a serializable dict."""
     BleakClient, _ = _require_bleak()
