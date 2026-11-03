@@ -83,7 +83,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
 def cmd_gatt(args: argparse.Namespace) -> int:
     from .ble import dump_gatt
 
-    dump = asyncio.run(dump_gatt(args.address))
+    dump = asyncio.run(dump_gatt(args.address, wait=args.wait))
     plx = any(s.startswith("00001822") for s in dump)
     for service, chars in dump.items():
         print(f"service {service}")
@@ -178,6 +178,7 @@ def cmd_listen(args: argparse.Namespace) -> int:
                 service_uuid=args.service,
                 char_uuid=args.char,
                 handler=printer,
+                wait=args.wait,
             )
         )
     except KeyboardInterrupt:
@@ -276,6 +277,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_gatt = sub.add_parser("gatt", help="dump services/characteristics")
     p_gatt.add_argument("--address", required=True)
+    p_gatt.add_argument(
+        "--wait",
+        type=float,
+        default=30.0,
+        help="seconds to wait for the device to advertise (0 = no wait)",
+    )
     p_gatt.set_defaults(func=cmd_gatt)
 
     p_listen = sub.add_parser("listen", help="subscribe to notifications")
@@ -292,6 +299,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="publish only after N identical consecutive frames",
     )
     p_listen.add_argument("--json", action="store_true")
+    p_listen.add_argument(
+        "--wait",
+        type=float,
+        default=30.0,
+        help="seconds to wait for the device to advertise (0 = no wait)",
+    )
     p_listen.set_defaults(func=cmd_listen)
 
     p_decode = sub.add_parser("decode", help="decode hex frame(s) offline")

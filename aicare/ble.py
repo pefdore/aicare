@@ -107,10 +107,29 @@ async def watch(
         await scanner.stop()
 
 
-async def dump_gatt(address: str) -> Dict[str, List[dict]]:
+async def find_device(address: str, wait: float = 0.0):
+    """Wait for a device to advertise, up to `wait` seconds total."""
+    BleakClient, BleakScanner = _require_bleak()
+    if wait <= 0:
+        return address
+    import time
+
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        device = await BleakScanner.find_device_by_address(address, timeout=5.0)
+        if device is not None:
+            return device
+    raise SystemExit(
+        f"device {address} did not advertise within {wait:g}s; "
+        "power it on and retry"
+    )
+
+
+async def dump_gatt(address: str, wait: float = 0.0) -> Dict[str, List[dict]]:
     """Connect and dump services/characteristics as a serializable dict."""
     BleakClient, _ = _require_bleak()
-    async with BleakClient(address) as client:
+    target = await find_device(address, wait)
+    async with BleakClient(target) as client:
         services = client.services
         dump: Dict[str, List[dict]] = {}
         for service in services:
@@ -152,6 +171,7 @@ async def listen(
     char_uuid: Optional[str] = None,
     handler: Optional[Callable[[int, bytes], None]] = None,
     plx_notify_uuid: str = PLX_CONTINUOUS_MEASUREMENT,
+    wait: float = 0.0,
 ) -> None:
     """Subscribe to notifications (forever) and forward frames to handler.
 
@@ -160,7 +180,8 @@ async def listen(
     characteristic found.
     """
     BleakClient, _ = _require_bleak()
-    async with BleakClient(address) as client:
+    target = await find_device(address, wait)
+    async with BleakClient(target) as client:
         if not char_uuid:
             candidates = []
             for s in client.services:
