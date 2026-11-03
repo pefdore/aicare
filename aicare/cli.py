@@ -40,8 +40,14 @@ def cmd_scan(args: argparse.Namespace) -> int:
     from .ble import scan
 
     devices = asyncio.run(scan(args.duration, args.name_filter))
-    for address, name in devices:
-        print(f"{address}  {name}")
+    for d in devices:
+        line = f"{d['address']}  "
+        if d["rssi"] is not None:
+            line += f"rssi={d['rssi']}  "
+        line += d["name"] or "(sans nom)"
+        if d["uuids"]:
+            line += "  services: " + ", ".join(d["uuids"])
+        print(line)
     if not devices:
         print("no device found", file=sys.stderr)
     return 0

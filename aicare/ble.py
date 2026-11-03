@@ -22,16 +22,24 @@ def _require_bleak():
 async def scan(
     duration: float = 10.0,
     name_filter: Optional[str] = None,
-) -> List[Tuple[str, str]]:
-    """Scan for BLE devices, returns (address, name) tuples."""
+) -> List[dict]:
+    """Scan for BLE devices, returns dicts (address, name, rssi, uuids)."""
     _, BleakScanner = _require_bleak()
-    devices = await BleakScanner.discover(timeout=duration, return_adv=False)
+    results = await BleakScanner.discover(timeout=duration, return_adv=True)
     out = []
-    for d in devices:
-        name = d.name or ""
+    for address, (device, adv) in results.items():
+        name = adv.local_name or device.name or ""
         if name_filter and name_filter.lower() not in name.lower():
             continue
-        out.append((d.address, name))
+        out.append(
+            {
+                "address": address,
+                "name": name,
+                "rssi": getattr(adv, "rssi", None),
+                "uuids": [str(u) for u in (adv.service_uuids or [])],
+            }
+        )
+    out.sort(key=lambda d: -(d["rssi"] or -999))
     return out
 
 
