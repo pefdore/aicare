@@ -258,6 +258,39 @@ def cmd_guess(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_write(args: argparse.Namespace) -> int:
+    from .ble import write
+
+    data = parse_frame(args.hex)
+
+    def make_printer(char: str) -> ListenPrinter:
+        return ListenPrinter(
+            offsets=None, stable=1, as_json=args.json, char_label=char.split("-")[0]
+        )
+
+    try:
+        asyncio.run(
+            write(
+                args.address,
+                args.char,
+                data,
+                handler_factory=make_printer,
+                listen_after=args.listen,
+            )
+        )
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def cmd_read(args: argparse.Namespace) -> int:
+    from .ble import read
+
+    data = asyncio.run(read(args.address, args.char))
+    print(" ".join(f"{b:02x}" for b in data))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aicare",
@@ -344,7 +377,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="pulse reading of the last frame (if different)",
     )
     p_guess.add_argument("frames", nargs="+")
-    p_guess.set_defaults(func=cmd_guess)
+    p_write = sub.add_parser(
+        "write", help="write hex bytes to a characteristic, then listen"
+    )
+    p_write.add_argument("--address", required=True)
+    p_write.add_argument("--char", required=True)
+    p_write.add_argument("hex", help="bytes to write, e.g. 0a 01 or 0a01")
+    p_write.add_argument(
+        "--listen",
+        type=float,
+        default=0.0,
+        help="seconds to listen to all notifications after the write",
+    )
+    p_write.add_argument("--json", action="store_true")
+    p_write.set_defaults(func=cmd_write)
+
+    p_read = sub.add_parser("read", help="read a characteristic and print hex")
+    p_read.add_argument("--address", required=True)
+    p_read.add_argument("--char", required=True)
+    p_read.set_defaults(func=cmd_read)
 
     return parser
 

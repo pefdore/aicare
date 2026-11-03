@@ -236,5 +236,45 @@ async def listen(
         await asyncio.Event().wait()
 
 
+async def write(
+    address: str,
+    char_uuid: str,
+    data: bytes,
+    handler_factory: Optional[Callable[[str], Callable]] = None,
+    listen_after: float = 0.0,
+) -> None:
+    """Write bytes to a characteristic, optionally listening to all notifies."""
+    BleakClient, _ = _require_bleak()
+    target = await find_device(address, 0.0)
+    async with BleakClient(target) as client:
+        if handler_factory is not None and listen_after > 0:
+            for s in client.services:
+                for ch in s.characteristics:
+                    if "notify" in ch.properties or "indicate" in ch.properties:
+                        try:
+                            await client.start_notify(str(ch.uuid), handler_factory(str(ch.uuid)))
+                        except Exception:
+                            continue
+        try:
+            await client.write_gatt_char(char_uuid, data, response=True)
+        except Exception:
+            await client.write_gatt_char(char_uuid, data, response=False)
+        print(
+            "wrote " + " ".join(f"{b:02x}" for b in data) + f" to {char_uuid}",
+            file=__import__("sys").stderr,
+            flush=True,
+        )
+        if listen_after > 0:
+            await asyncio.sleep(listen_after)
+
+
+async def read(address: str, char_uuid: str) -> bytes:
+    """Read a characteristic and return its raw value."""
+    BleakClient, _ = _require_bleak()
+    target = await find_device(address, 0.0)
+    async with BleakClient(target) as client:
+        return bytes(await client.read_gatt_char(char_uuid))
+
+
 def _default_handler(_sender, data: bytes) -> None:  # pragma: no cover
     print(" ".join(f"{b:02x}" for b in data), flush=True)
