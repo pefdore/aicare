@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aicare"
+version = "0.1.0"
+description = "CLI to capture and decode the Aicare W013 BLE pulse oximeter protocol"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "pefdore" }]
+keywords = ["ble", "oximeter", "spo2", "aicare", "w013", "reverse-engineering"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: System :: Hardware",
+]
+
+[project.urls]
+Homepage = "https://github.com/pefdore/aicare"
+
+[project.scripts]
+aicare = "aicare.cli:main"
+
+[project.optional-dependencies]
+ble = ["bleak>=0.21"]
+dev = ["bleak>=0.21"]
+
+[tool.setuptools.packages.find]
+include = ["aicare*"]
