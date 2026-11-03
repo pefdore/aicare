@@ -84,6 +84,8 @@ async def watch(
     try:
         while True:
             await asyncio.sleep(interval)
+            while not detections.empty():
+                yield detections.get_nowait()
             for address, count in list(misses.items()):
                 if count == 0:
                     continue
