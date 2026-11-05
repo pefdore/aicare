@@ -21,7 +21,14 @@ pip install ".[ble]"     # + bleak pour scan/gatt/listen (Bluetooth requis)
 ```bash
 aicare scan
 aicare scan --duration 20 --name-filter Aicare
+aicare scan --service-filter 1822   # uniquement les oxymètres PLX
 ```
+
+Les UUID de services publicitaires connus sont annotés (ex. `0x181B` =
+Body Composition, typique d'une balance connectée — pas d'un oxymètre).
+`--service-filter` ne garde que les appareils qui annoncent un service
+dont l'UUID contient le texte donné. `--min-rssi -75` élimine les
+appareils lointains pour se concentrer sur l'oxymètre posé à côté du PC.
 
 ### 2. Dumper le GATT complet
 
