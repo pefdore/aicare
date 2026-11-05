@@ -47,7 +47,11 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if args.watch:
         async def run_watch() -> None:
             async for kind, d in watch(
-                args.interval, args.name_filter, args.lost_rounds, args.service_filter
+                args.interval,
+                args.name_filter,
+                args.lost_rounds,
+                args.service_filter,
+                args.min_rssi,
             ):
                 if kind == "lost":
                     print(f"PERDU   {d['address']}", flush=True)
@@ -71,7 +75,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
             pass
         return 0
 
-    devices = asyncio.run(scan(args.duration, args.name_filter, args.service_filter))
+    devices = asyncio.run(
+        scan(args.duration, args.name_filter, args.service_filter, args.min_rssi)
+    )
     for d in devices:
         line = f"{d['address']}  "
         if d["rssi"] is not None:
@@ -328,6 +334,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="keep only devices advertising a service UUID containing this text "
         "(e.g. 181b, 1822, fff0)",
+    )
+    p_scan.add_argument(
+        "--min-rssi",
+        type=int,
+        default=None,
+        help="ignore devices weaker than this RSSI (e.g. -75 to keep close ones)",
     )
     p_scan.add_argument(
         "--watch",

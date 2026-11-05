@@ -19,12 +19,21 @@ def _require_bleak():
     return BleakClient, BleakScanner
 
 
-def _wanted(name: str, uuids: List[str], name_filter, service_filter) -> bool:
+def _wanted(
+    name: str,
+    uuids: List[str],
+    rssi,
+    name_filter,
+    service_filter,
+    min_rssi,
+) -> bool:
     if name_filter and name_filter.lower() not in name.lower():
         return False
     if service_filter and not any(
         service_filter.lower() in u.lower() for u in uuids
     ):
+        return False
+    if min_rssi is not None and (rssi is None or rssi < min_rssi):
         return False
     return True
 
@@ -33,6 +42,7 @@ async def scan(
     duration: float = 10.0,
     name_filter: Optional[str] = None,
     service_filter: Optional[str] = None,
+    min_rssi: Optional[int] = None,
 ) -> List[dict]:
     """Scan for BLE devices, returns dicts (address, name, rssi, uuids)."""
     _, BleakScanner = _require_bleak()
@@ -41,13 +51,14 @@ async def scan(
     for address, (device, adv) in results.items():
         name = adv.local_name or device.name or ""
         uuids = [str(u) for u in (adv.service_uuids or [])]
-        if not _wanted(name, uuids, name_filter, service_filter):
+        rssi = getattr(adv, "rssi", None)
+        if not _wanted(name, uuids, rssi, name_filter, service_filter, min_rssi):
             continue
         out.append(
             {
                 "address": address,
                 "name": name,
-                "rssi": getattr(adv, "rssi", None),
+                "rssi": rssi,
                 "uuids": uuids,
             }
         )
@@ -60,6 +71,7 @@ async def watch(
     name_filter: Optional[str] = None,
     lost_rounds: int = 3,
     service_filter: Optional[str] = None,
+    min_rssi: Optional[int] = None,
 ):
     """Continuously scan and yield ("new"|"lost", device_dict) events.
 
@@ -78,12 +90,13 @@ async def watch(
     def on_detection(device, adv):
         name = getattr(adv, "local_name", None) or device.name or ""
         uuids = [str(u) for u in (adv.service_uuids or [])]
-        if not _wanted(name, uuids, name_filter, service_filter):
+        rssi = getattr(adv, "rssi", None)
+        if not _wanted(name, uuids, rssi, name_filter, service_filter, min_rssi):
             return
         info = {
             "address": device.address,
             "name": name,
-            "rssi": getattr(adv, "rssi", None),
+            "rssi": rssi,
             "uuids": uuids,
         }
         misses[device.address] = 0
