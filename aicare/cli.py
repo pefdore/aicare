@@ -14,7 +14,12 @@ from .decoders import (
     decode_plx,
     guess_offsets,
     heuristic_decode,
+    service_label,
 )
+
+
+def format_services(uuids: List[str]) -> str:
+    return ", ".join(service_label(u) for u in uuids)
 
 
 def parse_frame(text: str) -> bytes:
@@ -42,7 +47,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if args.watch:
         async def run_watch() -> None:
             async for kind, d in watch(
-                args.interval, args.name_filter, args.lost_rounds
+                args.interval, args.name_filter, args.lost_rounds, args.service_filter
             ):
                 if kind == "lost":
                     print(f"PERDU   {d['address']}", flush=True)
@@ -52,7 +57,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
                     line += f"rssi={d['rssi']}  "
                 line += d["name"] or "(sans nom)"
                 if d["uuids"]:
-                    line += "  services: " + ", ".join(d["uuids"])
+                    line += "  services: " + format_services(d["uuids"])
                 print(line, flush=True)
 
         print(
@@ -66,14 +71,14 @@ def cmd_scan(args: argparse.Namespace) -> int:
             pass
         return 0
 
-    devices = asyncio.run(scan(args.duration, args.name_filter))
+    devices = asyncio.run(scan(args.duration, args.name_filter, args.service_filter))
     for d in devices:
         line = f"{d['address']}  "
         if d["rssi"] is not None:
             line += f"rssi={d['rssi']}  "
         line += d["name"] or "(sans nom)"
         if d["uuids"]:
-            line += "  services: " + ", ".join(d["uuids"])
+            line += "  services: " + format_services(d["uuids"])
         print(line)
     if not devices:
         print("no device found", file=sys.stderr)
@@ -318,6 +323,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan = sub.add_parser("scan", help="scan for BLE devices")
     p_scan.add_argument("--duration", type=float, default=10.0)
     p_scan.add_argument("--name-filter", default=None)
+    p_scan.add_argument(
+        "--service-filter",
+        default=None,
+        help="keep only devices advertising a service UUID containing this text "
+        "(e.g. 181b, 1822, fff0)",
+    )
     p_scan.add_argument(
         "--watch",
         action="store_true",

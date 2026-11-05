@@ -19,9 +19,20 @@ def _require_bleak():
     return BleakClient, BleakScanner
 
 
+def _wanted(name: str, uuids: List[str], name_filter, service_filter) -> bool:
+    if name_filter and name_filter.lower() not in name.lower():
+        return False
+    if service_filter and not any(
+        service_filter.lower() in u.lower() for u in uuids
+    ):
+        return False
+    return True
+
+
 async def scan(
     duration: float = 10.0,
     name_filter: Optional[str] = None,
+    service_filter: Optional[str] = None,
 ) -> List[dict]:
     """Scan for BLE devices, returns dicts (address, name, rssi, uuids)."""
     _, BleakScanner = _require_bleak()
@@ -29,14 +40,15 @@ async def scan(
     out = []
     for address, (device, adv) in results.items():
         name = adv.local_name or device.name or ""
-        if name_filter and name_filter.lower() not in name.lower():
+        uuids = [str(u) for u in (adv.service_uuids or [])]
+        if not _wanted(name, uuids, name_filter, service_filter):
             continue
         out.append(
             {
                 "address": address,
                 "name": name,
                 "rssi": getattr(adv, "rssi", None),
-                "uuids": [str(u) for u in (adv.service_uuids or [])],
+                "uuids": uuids,
             }
         )
     out.sort(key=lambda d: -(d["rssi"] or -999))
@@ -47,6 +59,7 @@ async def watch(
     interval: float = 5.0,
     name_filter: Optional[str] = None,
     lost_rounds: int = 3,
+    service_filter: Optional[str] = None,
 ):
     """Continuously scan and yield ("new"|"lost", device_dict) events.
 
@@ -64,13 +77,14 @@ async def watch(
 
     def on_detection(device, adv):
         name = getattr(adv, "local_name", None) or device.name or ""
-        if name_filter and name_filter.lower() not in name.lower():
+        uuids = [str(u) for u in (adv.service_uuids or [])]
+        if not _wanted(name, uuids, name_filter, service_filter):
             return
         info = {
             "address": device.address,
             "name": name,
             "rssi": getattr(adv, "rssi", None),
-            "uuids": [str(u) for u in (adv.service_uuids or [])],
+            "uuids": uuids,
         }
         misses[device.address] = 0
         if device.address not in known:

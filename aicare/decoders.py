@@ -15,6 +15,25 @@ from typing import Dict, Iterable, List, Optional
 PLX_SERVICE = "00001822-0000-1000-8000-00805f9b34fb"
 PLX_CONTINUOUS_MEASUREMENT = "00002a5f-0000-1000-8000-00805f9b34fb"
 
+SERVICE_NAMES = {
+    "180a": "Device Information",
+    "180d": "Heart Rate",
+    "180f": "Battery",
+    "181a": "Fitness / beacon",
+    "181b": "Body Composition (smart scale)",
+    "181d": "Weight Scale",
+    "1822": "Pulse Oximeter (PLX)",
+}
+
+
+def service_label(uuid: str) -> str:
+    """Annotate a service UUID with its standard name when known."""
+    short = uuid.split("-")[0].lower()
+    if len(short) == 8 and short.startswith("0000"):
+        short = short[4:]
+    name = SERVICE_NAMES.get(short)
+    return f"{uuid} [{name}]" if name else uuid
+
 SPO2_MIN, SPO2_MAX = 50, 100
 PULSE_MIN, PULSE_MAX = 30, 250
 PI_MIN, PI_MAX = 0.0, 25.5

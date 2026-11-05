@@ -1,6 +1,7 @@
 import unittest
 
-from aicare.cli import main, parse_frame
+from aicare.cli import main, parse_frame, format_services
+from aicare.decoders import service_label
 
 
 class TestParseFrame(unittest.TestCase):
@@ -57,6 +58,30 @@ class TestGuessCommand(unittest.TestCase):
             ["guess", "--spo2", "55", "--pulse", "44", "01:62:48"]
         )
         self.assertEqual(code, 1)
+
+
+class TestServiceLabel(unittest.TestCase):
+    def test_known_service(self):
+        self.assertIn(
+            "Body Composition",
+            service_label("0000181b-0000-1000-8000-00805f9b34fb"),
+        )
+
+    def test_plx_service(self):
+        self.assertIn(
+            "Pulse Oximeter",
+            service_label("00001822-0000-1000-8000-00805f9b34fb"),
+        )
+
+    def test_unknown_service_unchanged(self):
+        uuid = "0000ffff-0000-1000-8000-00805f9b34fb"
+        self.assertEqual(service_label(uuid), uuid)
+
+
+class TestFormatServices(unittest.TestCase):
+    def test_annotation_in_scan_line(self):
+        line = format_services(["0000181b-0000-1000-8000-00805f9b34fb"])
+        self.assertIn("[Body Composition (smart scale)]", line)
 
 
 if __name__ == "__main__":
